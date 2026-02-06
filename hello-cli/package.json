@@ -1,5 +1,5 @@
 {
-  "name": "@midnight-ntwrk/hello-cli",
+  "name": "hello-world-cli",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,6 +9,6 @@
     "stop": "docker compose -f proof-server.yml down"
   },
   "dependencies": {
-    "@midnight-ntwrk/hello-contract": "*"
+    "hello-world-contract": "*"
   }
 }

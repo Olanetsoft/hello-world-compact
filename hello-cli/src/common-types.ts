@@ -1,4 +1,4 @@
-import { Hello, type HelloPrivateState } from '@midnight-ntwrk/hello-contract';
+import { Hello, type HelloPrivateState } from 'hello-world-contract';
 import type { MidnightProviders } from '@midnight-ntwrk/midnight-js-types';
 import type { DeployedContract, FoundContract } from '@midnight-ntwrk/midnight-js-contracts';
 import type { ImpureCircuitId } from '@midnight-ntwrk/compact-js';
