@@ -3,15 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "workspaces": [
-    "contract",
-    "hello-cli"
-  ],
   "scripts": {
-    "build": "npm run build --workspace=contract && npm run build --workspace=hello-cli",
-    "compile": "npm run compact --workspace=contract",
-    "start": "npm run start --workspace=hello-cli",
-    "stop": "npm run stop --workspace=hello-cli"
+    "compile": "compact compile contracts/hello-world.compact contracts/managed/hello-world",
+    "build": "tsc",
+    "deploy": "node --loader ts-node/esm src/deploy.ts",
+    "cli": "node --loader ts-node/esm src/cli.ts",
+    "proof-server:start": "docker compose up -d",
+    "proof-server:stop": "docker compose down"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

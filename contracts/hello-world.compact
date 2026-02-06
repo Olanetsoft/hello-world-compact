@@ -2,10 +2,10 @@ pragma language_version >= 0.20;
 
 import CompactStandardLibrary;
 
-// public state - stores the message on the ledger
+// Public ledger state - stores the message visible on-chain
 export ledger message: Opaque<"string">;
 
-// transition function to store a new message
+// Circuit to store a new message
 export circuit storeMessage(newMessage: Opaque<"string">): [] {
   message = disclose(newMessage);
 }
