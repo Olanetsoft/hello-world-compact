@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+contract/src/managed/
+
+# Logs
+logs/
+*.log
+
+# Private state storage
+hello-private-state/
+*-level-db/
+*.ldb
+LOCK
+MANIFEST-*
+
+# Environment
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
