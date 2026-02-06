@@ -6,7 +6,7 @@ A minimal Hello World smart contract for the Midnight blockchain. Deploy to Prep
 
 - **Node.js v22+** (`nvm install 22`)
 - **Docker** (for proof server)
-- **Compact compiler** (`npm install -g @midnight-ntwrk/compact`)
+- **Compact compiler** - See [Midnight docs](https://docs.midnight.network/) for installation
 
 ## Quick Start
 
