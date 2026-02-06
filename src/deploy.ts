@@ -5,7 +5,7 @@ import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { WebSocket } from 'ws';
 import * as Rx from 'rxjs';
 import { Buffer } from 'buffer';
@@ -46,7 +46,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const zkConfigPath = path.resolve(__dirname, '..', 'contracts', 'managed', 'hello-world');
 
 // Load compiled contract
-const HelloWorld = await import(path.join(zkConfigPath, 'contract', 'index.cjs'));
+const contractPath = path.join(zkConfigPath, 'contract', 'index.js');
+const HelloWorld = await import(pathToFileURL(contractPath).href);
 
 const compiledContract = CompiledContract.make('hello-world', HelloWorld.Contract).pipe(
   CompiledContract.withVacantWitnesses,
@@ -156,7 +157,7 @@ async function main() {
   console.log('╚══════════════════════════════════════════════════════════════╝\n');
 
   // Check if contract is compiled
-  if (!fs.existsSync(path.join(zkConfigPath, 'contract', 'index.cjs'))) {
+  if (!fs.existsSync(path.join(zkConfigPath, 'contract', 'index.js'))) {
     console.error('Contract not compiled! Run: npm run compile');
     process.exit(1);
   }

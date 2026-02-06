@@ -6,15 +6,15 @@
   "scripts": {
     "compile": "compact compile contracts/hello-world.compact contracts/managed/hello-world",
     "build": "tsc",
-    "deploy": "node --loader ts-node/esm src/deploy.ts",
-    "cli": "node --loader ts-node/esm src/cli.ts",
+    "deploy": "tsx src/deploy.ts",
+    "cli": "tsx src/cli.ts",
     "proof-server:start": "docker compose up -d",
     "proof-server:stop": "docker compose down"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.1",
-    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   },
   "dependencies": {
@@ -27,11 +27,11 @@
     "@midnight-ntwrk/midnight-js-network-id": "3.0.0",
     "@midnight-ntwrk/midnight-js-node-zk-config-provider": "3.0.0",
     "@midnight-ntwrk/midnight-js-types": "3.0.0",
+    "@midnight-ntwrk/wallet-sdk-address-format": "3.0.0",
+    "@midnight-ntwrk/wallet-sdk-dust-wallet": "1.0.0",
     "@midnight-ntwrk/wallet-sdk-facade": "1.0.0",
     "@midnight-ntwrk/wallet-sdk-hd": "3.0.0",
     "@midnight-ntwrk/wallet-sdk-shielded": "1.0.0",
-    "@midnight-ntwrk/wallet-sdk-dust-wallet": "1.0.0",
-    "@midnight-ntwrk/wallet-sdk-address-format": "3.0.0",
     "@midnight-ntwrk/wallet-sdk-unshielded-wallet": "1.0.0",
     "ws": "^8.19.0"
   }
