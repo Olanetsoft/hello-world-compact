@@ -187,8 +187,14 @@ async function main() {
     console.log('\n  Connecting to Midnight Preprod...');
     const walletCtx = await createWallet(seed.trim());
 
-    console.log('  Syncing wallet...');
+    const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    let frame = 0;
+    const syncSpinner = setInterval(() => {
+      process.stdout.write(`\r  ${frames[frame++ % frames.length]} Syncing wallet (this may take 30-60 seconds)...`);
+    }, 80);
     await Rx.firstValueFrom(walletCtx.wallet.state().pipe(Rx.throttleTime(5000), Rx.filter((s) => s.isSynced)));
+    clearInterval(syncSpinner);
+    process.stdout.write('\r  ✓ Wallet synced.                                            \n');
 
     console.log('  Setting up providers...');
     const providers = await createProviders(walletCtx);

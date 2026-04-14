@@ -194,8 +194,14 @@ async function main() {
     console.log('  Creating wallet...');
     const walletCtx = await createWallet(seed);
 
-    console.log('  Syncing with network...');
+    const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    let frame = 0;
+    const syncSpinner = setInterval(() => {
+      process.stdout.write(`\r  ${frames[frame++ % frames.length]} Syncing with network (this may take 30-60 seconds)...`);
+    }, 80);
     const state = await Rx.firstValueFrom(walletCtx.wallet.state().pipe(Rx.throttleTime(5000), Rx.filter((s) => s.isSynced)));
+    clearInterval(syncSpinner);
+    process.stdout.write('\r  ✓ Synced with network.                                      \n');
     const address = walletCtx.unshieldedKeystore.getBech32Address();
     const balance = state.unshielded.balances[unshieldedToken().raw] ?? 0n;
 
