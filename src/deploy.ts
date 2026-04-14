@@ -18,8 +18,8 @@ import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-pri
 import { NodeZkConfigProvider } from '@midnight-ntwrk/midnight-js-node-zk-config-provider';
 import { setNetworkId, getNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import { toHex } from '@midnight-ntwrk/midnight-js-utils';
-import * as ledger from '@midnight-ntwrk/ledger-v7';
-import { unshieldedToken } from '@midnight-ntwrk/ledger-v7';
+import * as ledger from '@midnight-ntwrk/ledger-v8';
+import { unshieldedToken } from '@midnight-ntwrk/ledger-v8';
 import { WalletFacade } from '@midnight-ntwrk/wallet-sdk-facade';
 import { DustWallet } from '@midnight-ntwrk/wallet-sdk-dust-wallet';
 import { HDWallet, Roles, generateRandomSeed } from '@midnight-ntwrk/wallet-sdk-hd';
@@ -72,25 +72,34 @@ async function createWallet(seed: string) {
   const dustSecretKey = ledger.DustSecretKey.fromSeed(keys[Roles.Dust]);
   const unshieldedKeystore = createKeystore(keys[Roles.NightExternal], networkId);
 
-  const walletConfig = {
+  const shieldedConfig = {
     networkId,
     indexerClientConnection: { indexerHttpUrl: CONFIG.indexer, indexerWsUrl: CONFIG.indexerWS },
     provingServerUrl: new URL(CONFIG.proofServer),
     relayURL: new URL(CONFIG.node.replace(/^http/, 'ws')),
   };
 
-  const shieldedWallet = ShieldedWallet(walletConfig).startWithSecretKeys(shieldedSecretKeys);
-  const unshieldedWallet = UnshieldedWallet({
+  const unshieldedConfig = {
     networkId,
-    indexerClientConnection: walletConfig.indexerClientConnection,
+    indexerClientConnection: { indexerHttpUrl: CONFIG.indexer, indexerWsUrl: CONFIG.indexerWS },
     txHistoryStorage: new InMemoryTransactionHistoryStorage(),
-  }).startWithPublicKey(PublicKey.fromKeyStore(unshieldedKeystore));
-  const dustWallet = DustWallet({
-    ...walletConfig,
-    costParameters: { additionalFeeOverhead: 300_000_000_000_000n, feeBlocksMargin: 5 },
-  }).startWithSecretKey(dustSecretKey, ledger.LedgerParameters.initialParameters().dust);
+  };
 
-  const wallet = new WalletFacade(shieldedWallet, unshieldedWallet, dustWallet);
+  const dustConfig = {
+    networkId,
+    costParameters: { additionalFeeOverhead: 300_000_000_000_000n, feeBlocksMargin: 5 },
+    indexerClientConnection: { indexerHttpUrl: CONFIG.indexer, indexerWsUrl: CONFIG.indexerWS },
+    provingServerUrl: new URL(CONFIG.proofServer),
+    relayURL: new URL(CONFIG.node.replace(/^http/, 'ws')),
+  };
+
+  const wallet = await WalletFacade.init({
+    configuration: { ...shieldedConfig, ...unshieldedConfig, ...dustConfig },
+    shielded: (cfg: any) => ShieldedWallet(cfg).startWithSecretKeys(shieldedSecretKeys),
+    unshielded: (cfg: any) => UnshieldedWallet(cfg).startWithPublicKey(PublicKey.fromKeyStore(unshieldedKeystore)),
+    dust: (cfg: any) => DustWallet(cfg).startWithSecretKey(dustSecretKey, ledger.LedgerParameters.initialParameters().dust),
+  });
+
   await wallet.start(shieldedSecretKeys, dustSecretKey);
 
   return { wallet, shieldedSecretKeys, dustSecretKey, unshieldedKeystore };
@@ -117,7 +126,7 @@ function signTransactionIntents(tx: { intents?: Map<number, any> }, signFn: (pay
   }
 }
 
-async function createProviders(walletCtx: ReturnType<typeof createWallet> extends Promise<infer T> ? T : never) {
+async function createProviders(walletCtx: Awaited<ReturnType<typeof createWallet>>) {
   const state = await Rx.firstValueFrom(walletCtx.wallet.state().pipe(Rx.filter((s) => s.isSynced)));
 
   const walletProvider = {
@@ -138,9 +147,14 @@ async function createProviders(walletCtx: ReturnType<typeof createWallet> extend
   };
 
   const zkConfigProvider = new NodeZkConfigProvider(zkConfigPath);
+  const accountId = walletProvider.getCoinPublicKey();
 
   return {
-    privateStateProvider: levelPrivateStateProvider({ privateStateStoreName: 'hello-world-state', walletProvider }),
+    privateStateProvider: levelPrivateStateProvider({
+      privateStateStoreName: 'hello-world-state',
+      accountId,
+      privateStoragePasswordProvider: () => `${Buffer.from(accountId, 'hex').toString('base64')}!`,
+    }),
     publicDataProvider: indexerPublicDataProvider(CONFIG.indexer, CONFIG.indexerWS),
     zkConfigProvider,
     proofProvider: httpClientProofProvider(CONFIG.proofServer, zkConfigProvider),
@@ -210,7 +224,9 @@ async function main() {
     console.log('─── Step 3: DUST Token Setup ───────────────────────────────────\n');
     const dustState = await Rx.firstValueFrom(walletCtx.wallet.state().pipe(Rx.filter((s) => s.isSynced)));
 
-    if (dustState.dust.walletBalance(new Date()) === 0n) {
+    if (dustState.dust.availableCoins.length > 0) {
+      console.log(`  DUST tokens already available (${dustState.dust.balance(new Date()).toLocaleString()} DUST)`);
+    } else {
       const nightUtxos = dustState.unshielded.availableCoins.filter((c: any) => !c.meta?.registeredForDustGeneration);
       if (nightUtxos.length > 0) {
         console.log('  Registering for DUST generation...');
@@ -219,12 +235,22 @@ async function main() {
           walletCtx.unshieldedKeystore.getPublicKey(),
           (payload) => walletCtx.unshieldedKeystore.signData(payload),
         );
-        await walletCtx.wallet.submitTransaction(await walletCtx.wallet.finalizeRecipe(recipe));
+        const finalized = await walletCtx.wallet.finalizeRecipe(recipe);
+        await walletCtx.wallet.submitTransaction(finalized);
       }
 
-      console.log('  Waiting for DUST tokens...');
+      console.log('  Waiting for DUST tokens to accrue (this may take a few minutes)...');
       await Rx.firstValueFrom(
-        walletCtx.wallet.state().pipe(Rx.throttleTime(5000), Rx.filter((s) => s.isSynced), Rx.filter((s) => s.dust.walletBalance(new Date()) > 0n)),
+        walletCtx.wallet.state().pipe(
+          Rx.throttleTime(10000),
+          Rx.filter((s) => s.isSynced),
+          Rx.tap((s) => {
+            const dustBal = s.dust.balance(new Date());
+            const coins = s.dust.availableCoins.length;
+            if (dustBal > 0n) console.log(`  DUST balance: ${dustBal.toLocaleString()} (${coins} coins)`);
+          }),
+          Rx.filter((s) => s.dust.availableCoins.length >= 2),
+        ),
       );
     }
     console.log('  DUST tokens ready!\n');

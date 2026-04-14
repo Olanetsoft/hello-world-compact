@@ -17,8 +17,8 @@ import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-p
 import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
 import { NodeZkConfigProvider } from '@midnight-ntwrk/midnight-js-node-zk-config-provider';
 import { setNetworkId, getNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
-import * as ledger from '@midnight-ntwrk/ledger-v7';
-import { unshieldedToken } from '@midnight-ntwrk/ledger-v7';
+import * as ledger from '@midnight-ntwrk/ledger-v8';
+import { unshieldedToken } from '@midnight-ntwrk/ledger-v8';
 import { WalletFacade } from '@midnight-ntwrk/wallet-sdk-facade';
 import { DustWallet } from '@midnight-ntwrk/wallet-sdk-dust-wallet';
 import { HDWallet, Roles } from '@midnight-ntwrk/wallet-sdk-hd';
@@ -71,25 +71,34 @@ async function createWallet(seed: string) {
   const dustSecretKey = ledger.DustSecretKey.fromSeed(keys[Roles.Dust]);
   const unshieldedKeystore = createKeystore(keys[Roles.NightExternal], networkId);
 
-  const walletConfig = {
+  const shieldedConfig = {
     networkId,
     indexerClientConnection: { indexerHttpUrl: CONFIG.indexer, indexerWsUrl: CONFIG.indexerWS },
     provingServerUrl: new URL(CONFIG.proofServer),
     relayURL: new URL(CONFIG.node.replace(/^http/, 'ws')),
   };
 
-  const shieldedWallet = ShieldedWallet(walletConfig).startWithSecretKeys(shieldedSecretKeys);
-  const unshieldedWallet = UnshieldedWallet({
+  const unshieldedConfig = {
     networkId,
-    indexerClientConnection: walletConfig.indexerClientConnection,
+    indexerClientConnection: { indexerHttpUrl: CONFIG.indexer, indexerWsUrl: CONFIG.indexerWS },
     txHistoryStorage: new InMemoryTransactionHistoryStorage(),
-  }).startWithPublicKey(PublicKey.fromKeyStore(unshieldedKeystore));
-  const dustWallet = DustWallet({
-    ...walletConfig,
-    costParameters: { additionalFeeOverhead: 300_000_000_000_000n, feeBlocksMargin: 5 },
-  }).startWithSecretKey(dustSecretKey, ledger.LedgerParameters.initialParameters().dust);
+  };
 
-  const wallet = new WalletFacade(shieldedWallet, unshieldedWallet, dustWallet);
+  const dustConfig = {
+    networkId,
+    costParameters: { additionalFeeOverhead: 300_000_000_000_000n, feeBlocksMargin: 5 },
+    indexerClientConnection: { indexerHttpUrl: CONFIG.indexer, indexerWsUrl: CONFIG.indexerWS },
+    provingServerUrl: new URL(CONFIG.proofServer),
+    relayURL: new URL(CONFIG.node.replace(/^http/, 'ws')),
+  };
+
+  const wallet = await WalletFacade.init({
+    configuration: { ...shieldedConfig, ...unshieldedConfig, ...dustConfig },
+    shielded: (cfg: any) => ShieldedWallet(cfg).startWithSecretKeys(shieldedSecretKeys),
+    unshielded: (cfg: any) => UnshieldedWallet(cfg).startWithPublicKey(PublicKey.fromKeyStore(unshieldedKeystore)),
+    dust: (cfg: any) => DustWallet(cfg).startWithSecretKey(dustSecretKey, ledger.LedgerParameters.initialParameters().dust),
+  });
+
   await wallet.start(shieldedSecretKeys, dustSecretKey);
 
   return { wallet, shieldedSecretKeys, dustSecretKey, unshieldedKeystore };
@@ -116,7 +125,7 @@ function signTransactionIntents(tx: { intents?: Map<number, any> }, signFn: (pay
   }
 }
 
-async function createProviders(walletCtx: ReturnType<typeof createWallet> extends Promise<infer T> ? T : never) {
+async function createProviders(walletCtx: Awaited<ReturnType<typeof createWallet>>) {
   const state = await Rx.firstValueFrom(walletCtx.wallet.state().pipe(Rx.filter((s) => s.isSynced)));
 
   const walletProvider = {
@@ -137,9 +146,14 @@ async function createProviders(walletCtx: ReturnType<typeof createWallet> extend
   };
 
   const zkConfigProvider = new NodeZkConfigProvider(zkConfigPath);
+  const accountId = walletProvider.getCoinPublicKey();
 
   return {
-    privateStateProvider: levelPrivateStateProvider({ privateStateStoreName: 'hello-world-state', walletProvider }),
+    privateStateProvider: levelPrivateStateProvider({
+      privateStateStoreName: 'hello-world-state',
+      accountId,
+      privateStoragePasswordProvider: () => `${Buffer.from(accountId, 'hex').toString('base64')}!`,
+    }),
     publicDataProvider: indexerPublicDataProvider(CONFIG.indexer, CONFIG.indexerWS),
     zkConfigProvider,
     proofProvider: httpClientProofProvider(CONFIG.proofServer, zkConfigProvider),
@@ -192,7 +206,8 @@ async function main() {
     // Main menu loop
     let running = true;
     while (running) {
-      const dust = (await Rx.firstValueFrom(walletCtx.wallet.state().pipe(Rx.filter((s) => s.isSynced)))).dust.walletBalance(new Date());
+      const dustState = await Rx.firstValueFrom(walletCtx.wallet.state().pipe(Rx.filter((s) => s.isSynced)));
+      const dust = dustState.dust.balance(new Date());
 
       console.log('─────────────────────────────────────────────────────────────────');
       console.log(`  DUST: ${dust.toLocaleString()}`);
